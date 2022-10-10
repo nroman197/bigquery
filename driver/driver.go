@@ -6,6 +6,7 @@ import (
 	"database/sql/driver"
 	"fmt"
 	"net/url"
+	"path"
 	"strings"
 )
 
@@ -54,24 +55,27 @@ func configFromUri(uri string) (*bigQueryConfig, error) {
 		return nil, fmt.Errorf("failed to parse connection string: %q", uri)
 	}
 
-	path := strings.TrimPrefix(u.Path, "/")
-	if path == "" {
+	patternDatasetOnly := "/?*"
+	matchDatasetOnly, err := path.Match(patternDatasetOnly, u.Path)
+	if err != nil {
+		return nil, err
+	}
+
+	patternLocationDataset := "/*/*"
+	matchLocationDataset, err := path.Match(patternLocationDataset, u.Path)
+	if err != nil {
+		return nil, err
+	}
+
+	if !matchDatasetOnly && !matchLocationDataset {
 		return nil, fmt.Errorf("invalid connection string: %s", uri)
 	}
 
-	fields := strings.Split(path, "/")
-	if len(fields) > 2 {
-		return nil, fmt.Errorf("invalid connection string: %s", uri)
-	}
-
-	config := &bigQueryConfig{
+	location, dataset := path.Split(u.Path)
+	location = strings.Trim(location, "/")
+	return &bigQueryConfig{
 		projectID: u.Hostname(),
-		dataSet:   fields[len(fields)-1],
-	}
-
-	if len(fields) == 2 {
-		config.location = fields[0]
-	}
-
-	return config, nil
+		dataSet:   dataset,
+		location:  location,
+	}, nil
 }

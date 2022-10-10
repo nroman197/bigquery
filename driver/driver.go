@@ -5,6 +5,7 @@ import (
 	"context"
 	"database/sql/driver"
 	"fmt"
+	"net/url"
 	"strings"
 )
 
@@ -43,31 +44,34 @@ func (b bigQueryDriver) Open(uri string) (driver.Conn, error) {
 }
 
 func configFromUri(uri string) (*bigQueryConfig, error) {
-
 	if !strings.HasPrefix(uri, "bigquery://") {
 		return nil, fmt.Errorf("invalid prefix, expected bigquery:// got: %s", uri)
 	}
 
 	uri = strings.ToLower(uri)
-	path := strings.TrimPrefix(uri, "bigquery://")
-	fields := strings.Split(path, "/")
+	u, err := url.Parse(uri)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse connection string: %q", uri)
+	}
 
-	if len(fields) == 3 {
-		return &bigQueryConfig{
-			projectID: fields[0],
-			location:  fields[1],
-			dataSet:   fields[2],
-		}, nil
+	path := strings.TrimPrefix(u.Path, "/")
+	if path == "" {
+		return nil, fmt.Errorf("invalid connection string: %s", uri)
+	}
+
+	fields := strings.Split(path, "/")
+	if len(fields) > 2 {
+		return nil, fmt.Errorf("invalid connection string: %s", uri)
+	}
+
+	config := &bigQueryConfig{
+		projectID: u.Hostname(),
+		dataSet:   fields[len(fields)-1],
 	}
 
 	if len(fields) == 2 {
-		return &bigQueryConfig{
-			projectID: fields[0],
-			location:  "",
-			dataSet:   fields[1],
-		}, nil
+		config.location = fields[0]
 	}
 
-	return nil, fmt.Errorf("invalid connection string : %s", uri)
-
+	return config, nil
 }

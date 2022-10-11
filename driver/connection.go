@@ -32,7 +32,7 @@ func (connection *bigQueryConnection) Ping(ctx context.Context) error {
 
 	dataset := connection.GetDataset()
 	if dataset == nil {
-		return fmt.Errorf("faild to ping using '%s' dataset", connection.config.dataSet)
+		return fmt.Errorf("failed to ping using '%s' dataset", connection.config.dataSet)
 	}
 
 	_, err := dataset.Metadata(ctx)

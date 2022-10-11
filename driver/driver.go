@@ -1,13 +1,15 @@
 package driver
 
 import (
-	"cloud.google.com/go/bigquery"
 	"context"
 	"database/sql/driver"
 	"fmt"
 	"net/url"
 	"path"
 	"strings"
+
+	"cloud.google.com/go/bigquery"
+	"google.golang.org/api/option"
 )
 
 type bigQueryDriver struct {
@@ -17,6 +19,7 @@ type bigQueryConfig struct {
 	projectID string
 	location  string
 	dataSet   string
+	scopes    []string
 }
 
 func (b bigQueryDriver) Open(uri string) (driver.Conn, error) {
@@ -32,7 +35,7 @@ func (b bigQueryDriver) Open(uri string) (driver.Conn, error) {
 
 	ctx := context.Background()
 
-	client, err := bigquery.NewClient(ctx, config.projectID)
+	client, err := bigquery.NewClient(ctx, config.projectID, option.WithScopes(config.scopes...))
 	if err != nil {
 		return nil, err
 	}
@@ -73,9 +76,12 @@ func configFromUri(uri string) (*bigQueryConfig, error) {
 
 	location, dataset := path.Split(u.Path)
 	location = strings.Trim(location, "/")
+	scopes := strings.Split(u.Query().Get("scopes"), ",")
+
 	return &bigQueryConfig{
 		projectID: u.Hostname(),
 		dataSet:   dataset,
 		location:  location,
+		scopes:    scopes,
 	}, nil
 }

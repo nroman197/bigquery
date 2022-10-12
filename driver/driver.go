@@ -5,7 +5,6 @@ import (
 	"database/sql/driver"
 	"fmt"
 	"net/url"
-	"path"
 	"strings"
 
 	"cloud.google.com/go/bigquery"
@@ -48,40 +47,45 @@ func (b bigQueryDriver) Open(uri string) (driver.Conn, error) {
 }
 
 func configFromUri(uri string) (*bigQueryConfig, error) {
-	if !strings.HasPrefix(uri, "bigquery://") {
+	u, err := url.Parse(uri)
+	if err != nil {
+		return nil, invalidConnectionStringError(uri)
+	}
+
+	if u.Scheme != "bigquery" {
 		return nil, fmt.Errorf("invalid prefix, expected bigquery:// got: %s", uri)
 	}
 
-	uri = strings.ToLower(uri)
-	u, err := url.Parse(uri)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse connection string: %q", uri)
+	if u.Path == "" {
+		return nil, invalidConnectionStringError(uri)
 	}
 
-	patternDatasetOnly := "/?*"
-	matchDatasetOnly, err := path.Match(patternDatasetOnly, u.Path)
-	if err != nil {
-		return nil, err
+	fields := strings.Split(strings.TrimPrefix(u.Path, "/"), "/")
+	if len(fields) > 2 {
+		return nil, invalidConnectionStringError(uri)
 	}
 
-	patternLocationDataset := "/*/*"
-	matchLocationDataset, err := path.Match(patternLocationDataset, u.Path)
-	if err != nil {
-		return nil, err
-	}
-
-	if !matchDatasetOnly && !matchLocationDataset {
-		return nil, fmt.Errorf("invalid connection string: %s", uri)
-	}
-
-	location, dataset := path.Split(u.Path)
-	location = strings.Trim(location, "/")
-	scopes := strings.Split(u.Query().Get("scopes"), ",")
-
-	return &bigQueryConfig{
+	config := &bigQueryConfig{
 		projectID: u.Hostname(),
-		dataSet:   dataset,
-		location:  location,
-		scopes:    scopes,
-	}, nil
+		dataSet:   fields[len(fields)-1],
+		scopes:    getScopes(u.Query()),
+	}
+
+	if len(fields) == 2 {
+		config.location = fields[0]
+	}
+
+	return config, nil
+}
+
+func getScopes(query url.Values) []string {
+	q := strings.Trim(query.Get("scopes"), ",")
+	if q == "" {
+		return []string{}
+	}
+	return strings.Split(q, ",")
+}
+
+func invalidConnectionStringError(uri string) error {
+	return fmt.Errorf("invalid connection string: %s", uri)
 }
